@@ -5,7 +5,7 @@ backend/**/__pycache__/
 backend/**/*.pyc
 backend/.env
 backend/.secret
-backend/static/*.sh
+# backend/static/ contains large shell scripts, tracked separately if needed
 backend/venv/
 backend/.venv/
 
