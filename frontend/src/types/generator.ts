@@ -159,6 +159,7 @@ export interface GenerateResponse {
   recommendations: string[]
   has_error: boolean
   directory_ddl: string
+  steps: string[]
 }
 
 export interface GenerateRequest {

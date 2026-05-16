@@ -82,3 +82,18 @@ def migrate_encrypt_passwords():
         conn.close()
     except Exception:
         pass
+
+
+def migrate_user_role():
+    """Add role column to users table and set first user as admin."""
+    import sqlite3
+    db_path = DATABASE_URL.replace("sqlite:///", "")
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN role VARCHAR(20) DEFAULT 'operator'")
+    except Exception:
+        pass
+    # Set first user as admin
+    conn.execute("UPDATE users SET role = 'admin' WHERE id = (SELECT MIN(id) FROM users) AND (role IS NULL OR role = 'operator')")
+    conn.commit()
+    conn.close()

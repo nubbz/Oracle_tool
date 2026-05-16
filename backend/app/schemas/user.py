@@ -17,6 +17,7 @@ class UserResponse(BaseModel):
     username: str
     display_name: str
     is_active: bool
+    role: str = "operator"
 
     class Config:
         from_attributes = True

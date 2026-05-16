@@ -9,6 +9,7 @@
       本脚本仅用于新服务器部署，<b>严禁</b>在已运行数据库的主机上执行。
     </el-alert>
 
+    <el-form :model="form" label-width="auto">
     <!-- 基础配置 -->
     <el-card shadow="never" class="section-card">
       <template #header><span class="section-title">基础配置</span></template>
@@ -400,6 +401,7 @@
         </el-col>
       </el-row>
     </el-card>
+    </el-form>
 
     <!-- 操作按钮 -->
     <div class="action-bar">
@@ -408,20 +410,28 @@
     </div>
 
     <!-- 底部抽屉 -->
-    <el-drawer v-model="drawerVisible" direction="btt" size="45%" title="生成命令">
-      <div class="drawer-body">
-        <pre class="cmd-box">{{ generatedCommand }}</pre>
-        <div class="tags-area">
-          <el-tag v-for="tag in paramTags" :key="tag" size="small" type="info" style="margin: 2px">{{ tag }}</el-tag>
+    <el-drawer v-model="drawerVisible" direction="rtl" size="50%" title="生成结果">
+      <template v-if="generatedCommand">
+        <CommandSteps v-if="generatedSteps.length" :steps="generatedSteps" />
+        <el-divider v-if="generatedSteps.length" />
+        <div class="script-options">
+          <div class="tags-area">
+            <el-tag v-for="tag in paramTags" :key="tag" size="small" type="info" style="margin: 2px">{{ tag }}</el-tag>
+          </div>
+          <div class="download-btns">
+            <el-button size="small" @click="copyCommand">
+              <el-icon><CopyDocument /></el-icon> 复制
+            </el-button>
+            <el-button size="small" @click="downloadScript">
+              <el-icon><Download /></el-icon> .sh
+            </el-button>
+          </div>
         </div>
-      </div>
+        <CodeBlock :code="generatedCommand" label="安装命令" />
+      </template>
       <template #footer>
         <div class="drawer-footer">
-          <el-button @click="copyCommand">{{ copyLabel }}</el-button>
           <el-button type="primary" :loading="saving" @click="handleSave">保存到历史</el-button>
-          <el-button @click="downloadScript">
-            <el-icon style="margin-right: 4px"><Download /></el-icon>下载脚本
-          </el-button>
         </div>
       </template>
     </el-drawer>
@@ -431,78 +441,13 @@
 <script setup lang="ts">
 import { reactive, computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Download } from '@element-plus/icons-vue'
+import { Download, CopyDocument } from '@element-plus/icons-vue'
 import { generateInstallCommand } from '@/api/installer'
+import CommandSteps from '@/components/common/CommandSteps.vue'
+import CodeBlock from '@/components/common/CodeBlock.vue'
 
 const DB_VERSIONS = ['11', '12', '19', '21', '26']
-
-// Chinese sites commonly used charsets
 const CHARSET_COMMON = ['AL32UTF8', 'ZHS16GBK', 'ZHT16MSWIN950', 'UTF8', 'WE8ISO8859P1', 'EE8ISO8859P2']
-
-// Version-specific logic:
-// 11g: no CDB/PDB
-// 12c/19c: CDB/PDB optional (filling -pdb enables CDB)
-// 21c/23c: CDB forced, PDB required
-const supportsCDB = computed(() => form.db_version !== '11')
-const isCDBForced = computed(() => form.db_version === '21' || form.db_version === '26')
-
-const versionHint = computed(() => {
-  const v = form.db_version
-  if (!v) return null
-  const labels: Record<string, string> = { '11': '11g R2', '12': '12c R2', '19': '19c', '21': '21c', '26': '23c' }
-  const isForced = v === '21' || v === '26'
-  return {
-    text: isForced ? `${labels[v]} · CDB 强制模式` : `${labels[v]}`,
-    type: isForced ? 'warning' : 'info',
-  }
-})
-
-const charsetOptions = computed(() => CHARSET_COMMON)
-
-const blockSizeOptions = computed(() => {
-  // 11g supports 2K-32K, 12c+ supports same range
-  return [2048, 4096, 8192, 16384, 32768]
-})
-
-const redoPresets = computed(() => {
-  return [512, 1024, 2048, 4096]
-})
-
-const pdbPlaceholder = computed(() => {
-  if (isCDBForced.value) return 'CDB 模式必填，如 pdb01'
-  if (form.pdbname) return ''
-  return '可选，填入则启用 CDB'
-})
-
-// Auto-adjust defaults when version or mode changes
-watch(() => form.db_version, (newV, oldV) => {
-  if (newV === oldV) return
-  // 11g: clear PDB since not supported
-  if (newV === '11') {
-    form.pdbname = ''
-  }
-  // 21c/23c: CDB forced, leave empty but hint in placeholder
-  if (newV === '12' || newV === '19') {
-    form.pdbname = ''
-  }
-})
-
-watch(() => form.mode, (newM) => {
-  // When switching to single, clear ASM-specific fields and restore filesystem defaults
-  if (newM === 'single') {
-    form.data_base_disk = ''
-    form.grid_patch = ''
-    form.oradata_dir = '/oradata'
-    form.archive_dir = '/oradata/archivelog'
-  }
-  // When switching to standalone/rac, set ASM defaults
-  if (newM === 'standalone' || newM === 'rac') {
-    form.oradata_dir = '+DATA'
-    form.archive_dir = '+ARCH'
-    form.data_asm_group = 'DATA'
-    form.arch_asm_group = 'ARCH'
-  }
-})
 
 const DEFAULTS: Record<string, any> = {
   mode: 'single', gi_version: '', db_version: '',
@@ -563,11 +508,55 @@ const FLAG_MAP: [string, string][] = [
 const form = reactive({ ...DEFAULTS })
 
 const saving = ref(false)
-const copyLabel = ref('复制')
 const drawerVisible = ref(false)
 
 const isASM = computed(() => form.mode === 'standalone' || form.mode === 'rac')
 const isRAC = computed(() => form.mode === 'rac')
+
+const supportsCDB = computed(() => form.db_version !== '11')
+const isCDBForced = computed(() => form.db_version === '21' || form.db_version === '26')
+
+const versionHint = computed(() => {
+  const v = form.db_version
+  if (!v) return null
+  const labels: Record<string, string> = { '11': '11g R2', '12': '12c R2', '19': '19c', '21': '21c', '26': '23c' }
+  const isForced = v === '21' || v === '26'
+  return {
+    text: isForced ? `${labels[v]} · CDB 强制模式` : `${labels[v]}`,
+    type: isForced ? 'warning' : 'info',
+  }
+})
+
+const charsetOptions = computed(() => CHARSET_COMMON)
+const blockSizeOptions = computed(() => [2048, 4096, 8192, 16384, 32768])
+const redoPresets = computed(() => [512, 1024, 2048, 4096])
+
+const pdbPlaceholder = computed(() => {
+  if (isCDBForced.value) return 'CDB 模式必填，如 pdb01'
+  if (form.pdbname) return ''
+  return '可选，填入则启用 CDB'
+})
+
+watch(() => form.db_version, (newV, oldV) => {
+  if (newV === oldV) return
+  if (newV === '11') form.pdbname = ''
+  if (newV === '12' || newV === '19') form.pdbname = ''
+})
+
+watch(() => form.mode, (newM) => {
+  if (newM === 'single') {
+    form.data_base_disk = ''
+    form.grid_patch = ''
+    form.oradata_dir = '/oradata'
+    form.archive_dir = '/oradata/archivelog'
+  }
+  if (newM === 'standalone' || newM === 'rac') {
+    form.oradata_dir = '+DATA'
+    form.archive_dir = '+ARCH'
+    form.data_asm_group = 'DATA'
+    form.arch_asm_group = 'ARCH'
+  }
+})
 
 function onModeChange() {
   // keep form data, computed handles visibility
@@ -608,11 +597,73 @@ const { generatedCommand, paramTags } = (() => {
   }
 })()
 
+const STEP_DESCRIPTIONS: Record<string, string> = {
+  db_version: '安装 {value} 版本数据库',
+  hostname: '目标主机名: {value}',
+  oracle_user: '使用 {value} 作为 Oracle 软件所有者',
+  env_base_dir: '安装根目录: {value}',
+  db_name: '创建数据库名称: {value}',
+  db_characterset: '数据库字符集: {value}',
+  nation_characterset: '国家字符集: {value}',
+  db_block_size: '数据库块大小: {value} bytes',
+  pdbname: '创建 Pluggable Database: {value}',
+  redosize: 'Redo 日志组大小: {value} MB',
+  enable_arch: '启用归档日志模式',
+  oradata_dir: '数据文件目录: {value}',
+  archive_dir: '归档日志目录: {value}',
+  data_asm_group: '数据 ASM 磁盘组: {value}',
+  arch_asm_group: '归档 ASM 磁盘组: {value}',
+  data_base_disk: 'ASM 数据磁盘: {value}',
+  data_redun: '数据磁盘组冗余度: {value}',
+  local_ifname: '公网网卡: {value}',
+  grid_user: '使用 {value} 作为 Grid 软件所有者',
+  local_repo: '使用本地软件源',
+  huge_flag: '配置大页内存',
+  only_conf_os: '仅配置操作系统，不安装数据库',
+  install_until_db: '安装到 DB 软件完成',
+  install_until_grid: '安装到 Grid 软件完成',
+  optimize_db: '安装完成后执行数据库优化',
+  oracle_patch: '应用 Oracle PSU/RU 补丁: {value}',
+  ojvm_patch: '应用 OJVM PSU/RU 补丁: {value}',
+  grid_patch: '应用 Grid PSU/RU 补丁: {value}',
+  rac_priv_ifname: 'RAC 心跳网卡: {value}',
+  cluster_name: '集群名称: {value}',
+  scan_name: 'SCAN 名称: {value}',
+  rac_scan_ip: 'SCAN IP: {value}',
+  multipath: '启用 Multipath 多路径',
+  asm_disk_conf: '脚本自动配置 ASM 磁盘',
+  isgui: '安装图形界面',
+  net_repo: '使用网络软件源',
+  virtualbox: '启用 VirtualBox 修复',
+  dns: '配置 DNS',
+  timeserver_ip: '时间服务器: {value}',
+}
+
+const generatedSteps = computed(() => {
+  const steps: string[] = []
+  const mode = form.mode
+  const modeLabel: Record<string, string> = { single: '单机', standalone: '单机 ASM (Standalone)', rac: 'RAC 集群' }
+  steps.push(`安装模式: ${modeLabel[mode] || mode}`)
+
+  for (const [field] of FLAG_MAP) {
+    if (mode === 'single' && (ASM_FIELDS.has(field) || RAC_FIELDS.has(field))) continue
+    if (mode === 'standalone' && RAC_FIELDS.has(field)) continue
+    if (field === 'mode') continue
+
+    const val = String((form as any)[field] ?? '')
+    const def = String(DEFAULTS[field] ?? '')
+    if (val && val !== def && STEP_DESCRIPTIONS[field]) {
+      steps.push(STEP_DESCRIPTIONS[field].replace('{value}', val))
+    }
+  }
+
+  return steps
+})
+
 async function copyCommand() {
   try {
     await navigator.clipboard.writeText(generatedCommand.value)
-    copyLabel.value = '已复制'
-    setTimeout(() => { copyLabel.value = '复制' }, 2000)
+    ElMessage.success('已复制')
   } catch {
     ElMessage.error('复制失败')
   }
@@ -683,13 +734,11 @@ async function downloadScript() {
   justify-content: center;
 }
 
-.drawer-body { padding: 0 0 16px; }
-.cmd-box {
-  background: #1e1e1e; color: #3fb950; padding: 16px; border-radius: 6px;
-  font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
-  font-size: 13px; line-height: 1.7; white-space: pre-wrap; word-break: break-all;
-  min-height: 60px; margin: 0;
+.script-options {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 12px;
 }
-.tags-area { padding-top: 12px; display: flex; flex-wrap: wrap; gap: 4px; }
+.tags-area { display: flex; flex-wrap: wrap; gap: 4px; }
+.download-btns { display: flex; gap: 6px; }
 .drawer-footer { display: flex; gap: 8px; }
 </style>

@@ -9,6 +9,7 @@
       本工具仅适用于 <b>Oracle 19c</b> 数据库版本优化，其他版本请勿使用。
     </el-alert>
 
+    <el-form :model="form" label-width="auto">
     <!-- 基础配置 -->
     <el-card shadow="never" class="section-card">
       <template #header><span class="section-title">基础配置</span></template>
@@ -182,6 +183,7 @@
       <el-divider />
       <el-checkbox v-model="form.restart_after">优化完成后重启数据库 (-z)</el-checkbox>
     </el-card>
+    </el-form>
 
     <!-- 操作按钮 -->
     <div class="action-bar">
@@ -190,20 +192,28 @@
     </div>
 
     <!-- 底部抽屉 -->
-    <el-drawer v-model="drawerVisible" direction="btt" size="45%" title="生成命令">
-      <div class="drawer-body">
-        <pre class="cmd-box">{{ generatedCommand }}</pre>
-        <div class="tags-area">
-          <el-tag v-for="tag in paramTags" :key="tag" size="small" type="info" style="margin: 2px">{{ tag }}</el-tag>
+    <el-drawer v-model="drawerVisible" direction="rtl" size="50%" title="生成结果">
+      <template v-if="generatedCommand">
+        <CommandSteps v-if="generatedSteps.length" :steps="generatedSteps" />
+        <el-divider v-if="generatedSteps.length" />
+        <div class="script-options">
+          <div class="tags-area">
+            <el-tag v-for="tag in paramTags" :key="tag" size="small" type="info" style="margin: 2px">{{ tag }}</el-tag>
+          </div>
+          <div class="download-btns">
+            <el-button size="small" @click="copyCommand">
+              <el-icon><CopyDocument /></el-icon> 复制
+            </el-button>
+            <el-button size="small" @click="downloadScript">
+              <el-icon><Download /></el-icon> .sh
+            </el-button>
+          </div>
         </div>
-      </div>
+        <CodeBlock :code="generatedCommand" label="优化命令" />
+      </template>
       <template #footer>
         <div class="drawer-footer">
-          <el-button @click="copyCommand">{{ copyLabel }}</el-button>
           <el-button type="primary" :loading="saving" @click="handleSave">保存到历史</el-button>
-          <el-button @click="downloadScript">
-            <el-icon style="margin-right: 4px"><Download /></el-icon>下载脚本
-          </el-button>
         </div>
       </template>
     </el-drawer>
@@ -213,8 +223,10 @@
 <script setup lang="ts">
 import { reactive, computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Download } from '@element-plus/icons-vue'
+import { Download, CopyDocument } from '@element-plus/icons-vue'
 import { generateOptimizerCommand } from '@/api/optimizer'
+import CommandSteps from '@/components/common/CommandSteps.vue'
+import CodeBlock from '@/components/common/CodeBlock.vue'
 
 const stepOptions = [
   { value: 'omf', desc: 'OMF + 归档路径' },
@@ -266,7 +278,6 @@ const form = reactive({
 })
 
 const saving = ref(false)
-const copyLabel = ref('复制')
 const drawerVisible = ref(false)
 
 const isASM = computed(() => form.mode === 'rac' || form.mode === 'standalone')
@@ -358,11 +369,67 @@ const { generatedCommand, paramTags } = (() => {
   }
 })()
 
+const STEP_DESCRIPTIONS: Record<string, string> = {
+  db_name: '指定数据库实例名为 {value}',
+  mode: '安装模式: {value}',
+  oracle_user: '使用 {value} 用户执行优化',
+  oracle_home: 'Oracle Home 路径: {value}',
+  grid_home: 'Grid Home 路径: {value}',
+  redosize: '调整 Redo 日志大小为 {value} MB',
+  processes: '设置 processes 参数为 {value}',
+  open_cursors: '设置 open_cursors 参数为 {value}',
+  session_cached_cursors: '设置 session_cached_cursors 为 {value}',
+  parallel_max_servers: '设置 parallel_max_servers 为 {value}',
+  undo_retention: '设置 undo_retention 为 {value} 秒',
+  db_files: '设置 db_files 为 {value}',
+  db_memory: '配置数据库总内存为 {value}（SGA:PGA = 80:20 自动分配）',
+  sga_target: '设置 SGA_TARGET 为 {value}',
+  pga_target: '设置 PGA_AGGREGATE_TARGET 为 {value}',
+  data_asm_group: '使用 ASM 磁盘组 {value} 存放数据文件',
+  arch_asm_group: '使用 ASM 磁盘组 {value} 存放归档日志',
+  backup_dir: '备份目录: {value}',
+  oradata_dir: '数据文件目录: {value}',
+}
+
+const STEP_NAMES: Record<string, string> = {
+  omf: '配置 OMF 和归档路径',
+  redolog: '调整在线重做日志组大小和数量',
+  backup: '生成 RMAN 备份配置脚本',
+  para: '优化核心初始化参数',
+  sqlnet: '配置 sqlnet.ora 网络参数',
+  glogin: '配置 glogin.sql 登录脚本',
+}
+
+const generatedSteps = computed(() => {
+  const steps: string[] = []
+  const asm = isASM.value
+
+  const activeSteps = form.steps.map(s => STEP_NAMES[s]).filter(Boolean)
+  if (activeSteps.length) {
+    steps.push('将执行以下优化步骤: ' + activeSteps.join('、'))
+  }
+
+  for (const [field] of FLAG_MAP) {
+    if (!asm && (field === 'data_asm_group' || field === 'arch_asm_group')) continue
+    if (asm && field === 'oradata_dir') continue
+    const val = String((form as any)[field] ?? '')
+    const def = String(DEFAULTS[field] ?? '')
+    if (val && val !== def && STEP_DESCRIPTIONS[field]) {
+      steps.push(STEP_DESCRIPTIONS[field].replace('{value}', val))
+    }
+  }
+
+  if (form.restart_after) {
+    steps.push('优化完成后自动重启数据库')
+  }
+
+  return steps
+})
+
 async function copyCommand() {
   try {
     await navigator.clipboard.writeText(generatedCommand.value)
-    copyLabel.value = '已复制'
-    setTimeout(() => { copyLabel.value = '复制' }, 2000)
+    ElMessage.success('已复制')
   } catch {
     ElMessage.error('复制失败')
   }
@@ -440,13 +507,11 @@ async function downloadScript() {
   justify-content: center;
 }
 
-.drawer-body { padding: 0 0 16px; }
-.cmd-box {
-  background: #1e1e1e; color: #3fb950; padding: 16px; border-radius: 6px;
-  font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
-  font-size: 13px; line-height: 1.7; white-space: pre-wrap; word-break: break-all;
-  min-height: 60px; margin: 0;
+.script-options {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 12px;
 }
-.tags-area { padding-top: 12px; display: flex; flex-wrap: wrap; gap: 4px; }
+.tags-area { display: flex; flex-wrap: wrap; gap: 4px; }
+.download-btns { display: flex; gap: 6px; }
 .drawer-footer { display: flex; gap: 8px; }
 </style>

@@ -1,13 +1,34 @@
+import json as _json
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.schemas.history import HistoryResponse
 from app.services.history_service import HistoryService
+from app.services import crypto_service
 from app.api.v1.auth import get_current_user
 
 router = APIRouter()
 service = HistoryService()
+
+SENSITIVE_FIELDS = ("password", "ssh_password", "ssh_key_passphrase", "encryption_password")
+
+
+def _json_loads(s: str) -> dict:
+    try:
+        return _json.loads(s) if s else {}
+    except Exception:
+        return {}
+
+
+def _mask_connection(conn: dict) -> dict:
+    """Decrypt then mask sensitive fields for API response."""
+    out = dict(conn)
+    for field in SENSITIVE_FIELDS:
+        if field in out and out[field]:
+            out[field] = "***"
+    return out
 
 
 @router.get("", response_model=dict)
@@ -25,7 +46,7 @@ def list_history(
                 id=h.id,
                 tool=h.tool,
                 oracle_version=h.oracle_version,
-                connection=_json_loads(h.connection),
+                connection=_mask_connection(_json_loads(h.connection)),
                 params=_json_loads(h.params),
                 command=h.command,
                 created_at=h.created_at.isoformat() if h.created_at else "",
@@ -49,7 +70,7 @@ def get_history(
         raise HTTPException(status_code=404, detail="记录不存在")
     return HistoryResponse(
         id=h.id, tool=h.tool, oracle_version=h.oracle_version,
-        connection=_json_loads(h.connection), params=_json_loads(h.params),
+        connection=_mask_connection(_json_loads(h.connection)), params=_json_loads(h.params),
         command=h.command,
         created_at=h.created_at.isoformat() if h.created_at else "",
     )
@@ -71,13 +92,3 @@ def clear_history(
     user=Depends(get_current_user),
 ):
     service.delete_all(db, user.id)
-
-
-import json as _json
-
-
-def _json_loads(s: str) -> dict:
-    try:
-        return _json.loads(s) if s else {}
-    except Exception:
-        return {}

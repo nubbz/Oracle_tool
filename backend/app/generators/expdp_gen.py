@@ -19,6 +19,8 @@ class ExpdpGenerator(BaseGenerator):
             self._add_param("TABLES", p["tables"])
         if p.get("tablespaces"):
             self._add_param("TABLESPACES", p["tablespaces"])
+        if p.get("full") and p["full"]:
+            self._add_param("FULL", "Y")
 
         # 内容过滤
         if p.get("content") and p["content"] != "ALL":
@@ -80,6 +82,88 @@ class ExpdpGenerator(BaseGenerator):
         if p.get("estimate"):
             self._add_param("ESTIMATE", p["estimate"])
 
+        # 高级参数
+        if p.get("metrics") and p["metrics"]:
+            self._add_param("METRICS", "Y")
+        if p.get("status"):
+            self._add_param("STATUS", p["status"])
+        if p.get("data_options"):
+            self._add_param("DATA_OPTIONS", p["data_options"])
+
         # Container Database (CDB)
         if self.connection.get("container_mode") == "CDB":
             self._add_param("CONTAINER", "ALL")
+
+    def _build_steps(self) -> list[str]:
+        steps = []
+        p = self.params
+        added = {k: v for k, v in self._added_params}
+
+        steps.append(self._step_connect())
+
+        tool_label = "数据泵导出 (expdp)"
+
+        if "DIRECTORY" in added:
+            steps.append(f"使用 Directory 对象 {added['DIRECTORY']} 定位转储文件目录")
+        if "DUMPFILE" in added:
+            steps.append(f"将导出数据写入转储文件 {added['DUMPFILE']}")
+        if "LOGFILE" in added:
+            steps.append(f"日志输出到 {added['LOGFILE']}")
+
+        if "FULL" in added:
+            steps.append("执行全库导出")
+        elif "SCHEMAS" in added:
+            steps.append(f"导出以下 Schema 的数据: {added['SCHEMAS']}")
+        elif "TABLES" in added:
+            steps.append(f"导出以下表的数据: {added['TABLES']}")
+        if "TABLESPACES" in added:
+            steps.append(f"导出以下表空间: {added['TABLESPACES']}")
+
+        if "CONTENT" in added:
+            content_map = {"DATA_ONLY": "仅数据", "METADATA_ONLY": "仅元数据", "ALL": "全部（数据+元数据）"}
+            steps.append(f"导出内容: {content_map.get(added['CONTENT'], added['CONTENT'])}")
+
+        if "QUERY" in added:
+            steps.append(f"使用查询条件过滤数据: {added['QUERY']}")
+        if "EXCLUDE" in added:
+            steps.append(f"排除指定对象: {added['EXCLUDE']}")
+        if "INCLUDE" in added:
+            steps.append(f"仅包含指定对象: {added['INCLUDE']}")
+
+        if "PARALLEL" in added:
+            steps.append(f"启用 {added['PARALLEL']} 个并行工作线程加速导出")
+        if "COMPRESSION" in added:
+            steps.append(f"启用 {added['COMPRESSION']} 压缩以减小转储文件大小")
+
+        if "ENCRYPTION" in added or "ENCRYPTION_PASSWORD" in added:
+            enc_mode = added.get("ENCRYPTION_MODE", "")
+            mode_label = f" ({enc_mode})" if enc_mode else ""
+            steps.append(f"启用数据加密{mode_label}")
+
+        if "FLASHBACK_SCN" in added:
+            steps.append(f"基于 SCN {added['FLASHBACK_SCN']} 实现一致性导出")
+        elif "FLASHBACK_TIME" in added:
+            steps.append(f"基于时间点 {added['FLASHBACK_TIME']} 实现一致性导出")
+
+        if "VERSION" in added:
+            steps.append(f"生成兼容 {added['VERSION']} 版本的转储文件")
+
+        if "FILESIZE" in added:
+            steps.append(f"每个转储文件最大 {added['FILESIZE']}，超出后自动分割")
+
+        if "TRANSPORTABLE" in added:
+            steps.append("使用传输表空间模式导出")
+
+        if "ESTIMATE" in added:
+            steps.append(f"使用 {added['ESTIMATE']} 方式估算导出数据量")
+
+        if "METRICS" in added:
+            steps.append("记录导出性能指标")
+
+        if "REUSE_DUMPFILES" in added:
+            steps.append("覆盖已存在的转储文件")
+
+        if self.connection.get("container_mode") == "CDB":
+            steps.append("以 CDB 模式导出，包含所有 PDB 的数据")
+
+        return steps

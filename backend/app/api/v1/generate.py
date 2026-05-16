@@ -7,11 +7,32 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.schemas.generator import GenerateRequest, GenerateResponse, ValidationWarning
 from app.services.command_service import CommandService
+from app.services import crypto_service
 from app.models.history import History
 from app.api.v1.auth import get_current_user
 
 router = APIRouter()
 command_service = CommandService()
+
+SENSITIVE_FIELDS = ("password", "ssh_password", "ssh_key_passphrase", "encryption_password")
+
+
+def _encrypt_connection(conn: dict) -> dict:
+    """Encrypt sensitive fields in connection dict before storage."""
+    out = dict(conn)
+    for field in SENSITIVE_FIELDS:
+        if field in out and out[field]:
+            out[field] = crypto_service.encrypt(out[field])
+    return out
+
+
+def _decrypt_connection(conn: dict) -> dict:
+    """Decrypt sensitive fields in connection dict after retrieval."""
+    out = dict(conn)
+    for field in SENSITIVE_FIELDS:
+        if field in out and out[field]:
+            out[field] = crypto_service.decrypt(out[field])
+    return out
 
 
 @router.post("/generate", response_model=GenerateResponse)
@@ -31,11 +52,12 @@ def generate(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
     # 保存历史记录
+    safe_conn = _encrypt_connection(body.connection.model_dump())
     history = History(
         user_id=user.id,
         tool=body.tool,
         oracle_version=body.oracle_version,
-        connection=json.dumps(body.connection.model_dump(), ensure_ascii=False),
+        connection=json.dumps(safe_conn, ensure_ascii=False),
         params=json.dumps(body.params, ensure_ascii=False),
         command=result["command"],
     )
@@ -49,6 +71,7 @@ def generate(
         warnings=[ValidationWarning(**w) for w in result["warnings"]],
         recommendations=result["recommendations"],
         directory_ddl=result.get("directory_ddl", ""),
+        steps=result.get("steps", []),
     )
 
 
@@ -73,11 +96,12 @@ def generate_reverse(
 
     # 保存历史记录
     reverse_tool = "impdp" if body.tool == "expdp" else "imp"
+    safe_conn = _encrypt_connection(body.connection.model_dump())
     history = History(
         user_id=user.id,
         tool=reverse_tool,
         oracle_version=body.oracle_version,
-        connection=json.dumps(body.connection.model_dump(), ensure_ascii=False),
+        connection=json.dumps(safe_conn, ensure_ascii=False),
         params=json.dumps(body.params, ensure_ascii=False),
         command=result["command"],
     )
@@ -91,4 +115,5 @@ def generate_reverse(
         warnings=[ValidationWarning(**w) for w in result["warnings"]],
         recommendations=result["recommendations"],
         directory_ddl=result.get("directory_ddl", ""),
+        steps=result.get("steps", []),
     )

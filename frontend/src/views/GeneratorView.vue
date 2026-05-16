@@ -92,6 +92,8 @@
       <template v-if="store.result">
         <ValidationPanel :warnings="store.result.warnings" :recommendations="store.result.recommendations" />
         <el-divider v-if="store.result.warnings.length > 0 || store.result.recommendations.length > 0" />
+        <CommandSteps v-if="store.result.steps?.length" :steps="store.result.steps" />
+        <el-divider v-if="store.result.steps?.length" />
         <ScriptOptions :result="store.result" />
       </template>
     </el-drawer>
@@ -102,6 +104,7 @@
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useGeneratorStore } from '@/stores/generatorStore'
+import CommandSteps from '@/components/common/CommandSteps.vue'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { generateCommand, generateReverse } from '@/api/generator'
 import { getEnvironments } from '@/api/environment'

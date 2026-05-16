@@ -1,3 +1,5 @@
+import re
+import shlex
 from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Optional
@@ -15,6 +17,19 @@ class BaseGenerator(ABC):
         self._parts: list[str] = []
         self._parfile_lines: list[str] = []
         self._built = False
+        self._added_params: list[tuple[str, str]] = []
+
+    @staticmethod
+    def _safe_sql_id(name: str) -> str:
+        """Validate a SQL identifier (table/schema/directory name)."""
+        if not re.match(r'^[A-Za-z_][A-Za-z0-9_$#]*$', name):
+            raise ValueError(f"Invalid SQL identifier: {name}")
+        return name
+
+    @staticmethod
+    def _sq(value) -> str:
+        """Shell-quote a value for safe embedding in scripts."""
+        return shlex.quote(str(value))
 
     def build_connect_string(self) -> str:
         auth_method = self.connection.get("auth_method", "password")
@@ -30,7 +45,7 @@ class BaseGenerator(ABC):
             return "/ as sysdba"
         else:
             ident = self._get_identifier(connect_type)
-            return f'{username}/{password}@{host}:{port}/{ident}'
+            return f'{username}/"{password}"@{host}:{port}/{ident}'
 
     def _get_identifier(self, connect_type: str) -> str:
         if connect_type == "sid":
@@ -50,6 +65,7 @@ class BaseGenerator(ABC):
             return False
         self._parts.append(f"{key}={self._format_value(value)}")
         self._parfile_lines.append(f"{key}={self._format_value(value)}")
+        self._added_params.append((key, self._format_value(value)))
         return True
 
     def _format_value(self, value) -> str:
@@ -82,6 +98,29 @@ class BaseGenerator(ABC):
             self._build_params()
             self._built = True
 
+    def generate_steps(self) -> list[str]:
+        """Generate Chinese step descriptions explaining what the command does."""
+        self._do_build()
+        return self._build_steps()
+
+    def _build_steps(self) -> list[str]:
+        """Override in subclasses to provide tool-specific step descriptions."""
+        return []
+
+    def _step_connect(self) -> str:
+        auth = self.connection.get("auth_method", "password")
+        host = self.connection.get("host", "localhost")
+        port = self.connection.get("port", 1521)
+        connect_type = self.connection.get("connect_type", "service")
+        ident = self._get_identifier(connect_type)
+        username = self.connection.get("username", "")
+
+        if auth == "os":
+            return "以 OS 认证方式连接数据库 (sysdba)"
+        if auth == "wallet":
+            return f"通过 Oracle Wallet 认证连接 {username}@{host}:{port}/{ident}"
+        return f"连接到数据库 {username}@{host}:{port}/{ident}"
+
     def generate_script(self, script_type: str = "sh") -> str:
         command = self.generate_command()
         if script_type == "bat":
@@ -112,13 +151,13 @@ class BaseGenerator(ABC):
             "export LD_LIBRARY_PATH=$ORACLE_HOME/lib:$LD_LIBRARY_PATH",
             "",
             "# --- Connection ---",
-            'DB_HOST="{}"'.format(host),
-            'DB_PORT="{}"'.format(port),
-            'DB_USER="{}"'.format(username),
-            'DB_{}="{}"'.format(ident_label, ident_value),
+            "DB_HOST={}".format(self._sq(host)),
+            "DB_PORT={}".format(self._sq(port)),
+            "DB_USER={}".format(self._sq(username)),
+            "DB_{}={}".format(ident_label, self._sq(ident_value)),
             'DB_PASS="***"  # 请替换为实际密码，建议使用 Oracle Wallet',
-            'CONTAINER_MODE="{}"'.format(self.connection.get("container_mode", "")),
-            'PDB_NAME="{}"'.format(self.connection.get("pdb_name", "")),
+            "CONTAINER_MODE={}".format(self._sq(self.connection.get("container_mode", ""))),
+            "PDB_NAME={}".format(self._sq(self.connection.get("pdb_name", ""))),
             "",
             "# --- Timestamp ---",
             "TIMESTAMP=$(date +%Y%m%d_%H%M%S)",
@@ -147,11 +186,11 @@ class BaseGenerator(ABC):
             lines.extend([
                 "",
                 "# --- SSH Tunnel ---",
-                'SSH_TUNNEL_HOST="{}"'.format(ssh_host),
-                'SSH_TUNNEL_PORT="{}"'.format(ssh_port),
-                'SSH_TUNNEL_USER="{}"'.format(ssh_user),
-                'SSH_REMOTE_HOST="{}"'.format(host),
-                'SSH_REMOTE_PORT="{}"'.format(port),
+                "SSH_TUNNEL_HOST={}".format(self._sq(ssh_host)),
+                "SSH_TUNNEL_PORT={}".format(self._sq(ssh_port)),
+                "SSH_TUNNEL_USER={}".format(self._sq(ssh_user)),
+                "SSH_REMOTE_HOST={}".format(self._sq(host)),
+                "SSH_REMOTE_PORT={}".format(self._sq(port)),
                 "SSH_LOCAL_PORT=15210",
                 "",
                 "# Auto-select available local port",
@@ -164,7 +203,7 @@ class BaseGenerator(ABC):
                 lines.extend([
                     "",
                     "ssh -fNL $SSH_LOCAL_PORT:$SSH_REMOTE_HOST:$SSH_REMOTE_PORT \\",
-                    "    -i \"{}\" \\".format(ssh_key),
+                    "    -i {} \\".format(self._sq(ssh_key)),
                     "    -p $SSH_TUNNEL_PORT \\",
                     "    -o StrictHostKeyChecking=no \\",
                     "    $SSH_TUNNEL_USER@$SSH_TUNNEL_HOST",
@@ -177,7 +216,7 @@ class BaseGenerator(ABC):
                     '    echo "[ERROR] sshpass is required. Install: apt-get install sshpass"',
                     "    exit 1",
                     "fi",
-                    'sshpass -p "{}" ssh -fNL $SSH_LOCAL_PORT:$SSH_REMOTE_HOST:$SSH_REMOTE_PORT \\'.format(ssh_pwd),
+                    "sshpass -p {} ssh -fNL $SSH_LOCAL_PORT:$SSH_REMOTE_HOST:$SSH_REMOTE_PORT \\".format(self._sq(ssh_pwd)),
                     "    -p $SSH_TUNNEL_PORT \\",
                     "    -o StrictHostKeyChecking=no \\",
                     "    $SSH_TUNNEL_USER@$SSH_TUNNEL_HOST",
@@ -264,12 +303,14 @@ class BaseGenerator(ABC):
         if not directory:
             return ""
         username = self.connection.get("username", "")
+        safe_dir = self._safe_sql_id(directory)
         lines = [
             "-- 创建 Directory 对象（需 DBA 权限执行）",
-            "CREATE OR REPLACE DIRECTORY {} AS '/path/to/dump';".format(directory),
+            "CREATE OR REPLACE DIRECTORY {} AS '/path/to/dump';".format(safe_dir),
         ]
         if username:
-            lines.append("GRANT READ, WRITE ON DIRECTORY {} TO {};".format(directory, username))
+            safe_user = self._safe_sql_id(username)
+            lines.append("GRANT READ, WRITE ON DIRECTORY {} TO {};".format(safe_dir, safe_user))
         return "\n".join(lines)
 
     def _generate_bat_script(self, command: str) -> str:
@@ -304,10 +345,10 @@ class BaseGenerator(ABC):
             "set PATH=%ORACLE_HOME%\\bin;%PATH%",
             "",
             "REM --- Connection ---",
-            "set DB_HOST={}".format(host),
-            "set DB_PORT={}".format(port),
-            "set DB_USER={}".format(username),
-            "set DB_{}={}".format(ident_label, ident_value),
+            "set DB_HOST={}".format(self._sq(host)),
+            "set DB_PORT={}".format(self._sq(port)),
+            "set DB_USER={}".format(self._sq(username)),
+            "set DB_{}={}".format(ident_label, self._sq(ident_value)),
             "set DB_PASS=***  REM 请替换为实际密码",
             "set CONTAINER_MODE={}".format(self.connection.get("container_mode", "")),
             "set PDB_NAME={}".format(self.connection.get("pdb_name", "")),

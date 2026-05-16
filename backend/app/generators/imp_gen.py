@@ -82,3 +82,52 @@ class ImpGenerator(BaseGenerator):
         # TOID 验证
         if p.get("toid_novalidate"):
             self._add_param("TOID_NOVALIDATE", f'({",".join(p["toid_novalidate"])})')
+
+    def _build_steps(self) -> list[str]:
+        steps = []
+        added = {k: v for k, v in self._added_params}
+
+        steps.append(self._step_connect())
+
+        if "FILE" in added:
+            steps.append(f"从导出文件 {added['FILE']} 导入数据")
+        if "LOG" in added:
+            steps.append(f"日志输出到 {added['LOG']}")
+
+        if "FROMUSER" in added:
+            steps.append(f"导入源 Schema: {added['FROMUSER']}")
+        if "TOUSER" in added:
+            steps.append(f"导入到目标 Schema: {added['TOUSER']}")
+        elif "TABLES" in added:
+            steps.append(f"导入以下表: {added['TABLES']}")
+
+        if "COMMIT" in added:
+            steps.append("每批数据提交一次，减少事务回滚风险")
+        if "IGNORE" in added:
+            steps.append("忽略对象已存在等非致命错误继续导入")
+        if "SHOW" in added:
+            steps.append("仅显示 SQL 语句，不执行实际导入")
+        if "COMPILE" in added:
+            steps.append("导入后重新编译所有 PL/SQL 对象")
+
+        if "BUFFER" in added:
+            steps.append(f"设置数据缓冲区大小: {added['BUFFER']}")
+
+        if "INDEXFILE" in added:
+            steps.append(f"将索引创建语句写入文件 {added['INDEXFILE']}")
+
+        if "ROWS" in added and added["ROWS"] == "N":
+            steps.append("仅导入元数据（不导入数据行）")
+
+        skip_labels = {"INDEXES": "索引", "CONSTRAINTS": "约束", "GRANTS": "权限", "TRIGGERS": "触发器"}
+        for key, label in skip_labels.items():
+            if key in added and added[key] == "N":
+                steps.append(f"不导入{label}")
+
+        if "STATISTICS" in added:
+            steps.append(f"统计信息处理方式: {added['STATISTICS']}")
+
+        if "FILESIZE" in added:
+            steps.append(f"每个文件大小: {added['FILESIZE']}")
+
+        return steps

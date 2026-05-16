@@ -66,3 +66,47 @@ class ExpGenerator(BaseGenerator):
         # 对象一致性
         if p.get("object_consistent"):
             self._add_param("OBJECT_CONSISTENT", "Y")
+
+    def _build_steps(self) -> list[str]:
+        steps = []
+        added = {k: v for k, v in self._added_params}
+
+        steps.append(self._step_connect())
+
+        if "FILE" in added:
+            steps.append(f"将导出数据写入文件 {added['FILE']}")
+        if "LOG" in added:
+            steps.append(f"日志输出到 {added['LOG']}")
+
+        if "OWNER" in added:
+            steps.append(f"导出以下用户的对象: {added['OWNER']}")
+        elif "TABLES" in added:
+            steps.append(f"导出以下表: {added['TABLES']}")
+
+        if "QUERY" in added:
+            steps.append(f"使用查询条件过滤数据: {added['QUERY']}")
+
+        if "DIRECT" in added:
+            steps.append("使用直接路径模式导出，绕过 SQL 层提升性能")
+        if "CONSISTENT" in added:
+            steps.append("启用一致性导出，保证跨表数据一致性")
+        if "COMPRESS" in added:
+            steps.append("启用压缩减少导出文件大小")
+        if "BUFFER" in added:
+            steps.append(f"设置数据缓冲区大小: {added['BUFFER']}")
+
+        if "STATISTICS" in added:
+            steps.append(f"统计信息处理方式: {added['STATISTICS']}")
+
+        if "ROWS" in added and added["ROWS"] == "N":
+            steps.append("仅导出元数据（不导出数据行）")
+
+        skip_labels = {"INDEXES": "索引", "CONSTRAINTS": "约束", "GRANTS": "权限", "TRIGGERS": "触发器"}
+        for key, label in skip_labels.items():
+            if key in added and added[key] == "N":
+                steps.append(f"不导出{label}")
+
+        if "FILESIZE" in added:
+            steps.append(f"每个导出文件最大 {added['FILESIZE']}")
+
+        return steps

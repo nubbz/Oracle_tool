@@ -62,6 +62,7 @@ class CommandService:
             "recommendations": recs,
             "has_error": has_error,
             "directory_ddl": directory_ddl,
+            "steps": generator.generate_steps(),
         }
 
     def reverse_generate(self, tool: str, oracle_version: str, connection: dict, params: dict) -> dict:

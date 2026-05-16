@@ -73,6 +73,10 @@ class ConflictEngine:
         if p.get("directory") and p["directory"] != p["directory"].upper():
             w.append({"level": "info", "field": "directory", "message": "DIRECTORY 建议使用大写", "suggestion": f"建议改为 {p['directory'].upper()}"})
 
+        # FULL + SCHEMAS/TABLES 互斥
+        if p.get("full") and (p.get("schemas") or p.get("tables")):
+            w.append({"level": "error", "field": "full", "message": "FULL 不能与 SCHEMAS/TABLES 同时指定", "suggestion": "全库导出请移除 SCHEMAS/TABLES"})
+
         return w
 
     def _validate_exp(self, p: dict, c: dict) -> list[dict]:

@@ -111,3 +111,96 @@ class ImpdpGenerator(BaseGenerator):
         # Container Database (CDB)
         if self.connection.get("container_mode") == "CDB":
             self._add_param("CONTAINER", "ALL")
+
+        # 高级参数
+        if p.get("full") and p["full"]:
+            self._add_param("FULL", "Y")
+        if p.get("status"):
+            self._add_param("STATUS", p["status"])
+        if p.get("views_as_tables"):
+            self._add_param("VIEWS_AS_TABLES", p["views_as_tables"])
+
+    def _build_steps(self) -> list[str]:
+        steps = []
+        p = self.params
+        added = {k: v for k, v in self._added_params}
+
+        steps.append(self._step_connect())
+
+        if "DIRECTORY" in added:
+            steps.append(f"使用 Directory 对象 {added['DIRECTORY']} 定位转储文件目录")
+        if "DUMPFILE" in added:
+            steps.append(f"从转储文件 {added['DUMPFILE']} 导入数据")
+        if "LOGFILE" in added:
+            steps.append(f"日志输出到 {added['LOGFILE']}")
+
+        if "FULL" in added:
+            steps.append("执行全库导入")
+        elif "SCHEMAS" in added:
+            steps.append(f"导入以下 Schema 的数据: {added['SCHEMAS']}")
+        elif "TABLES" in added:
+            steps.append(f"导入以下表的数据: {added['TABLES']}")
+
+        if "CONTENT" in added:
+            content_map = {"DATA_ONLY": "仅数据", "METADATA_ONLY": "仅元数据", "ALL": "全部（数据+元数据）"}
+            steps.append(f"导入内容: {content_map.get(added['CONTENT'], added['CONTENT'])}")
+
+        if "REMAP_SCHEMA" in added:
+            steps.append(f"重映射 Schema: {added['REMAP_SCHEMA']}")
+        if "REMAP_TABLESPACE" in added:
+            steps.append(f"重映射表空间: {added['REMAP_TABLESPACE']}")
+        if "REMAP_TABLE" in added:
+            steps.append(f"重映射表名: {added['REMAP_TABLE']}")
+        if "REMAP_DATAFILE" in added:
+            steps.append(f"重映射数据文件路径: {added['REMAP_DATAFILE']}")
+
+        if "TABLE_EXISTS_ACTION" in added:
+            action_map = {"SKIP": "跳过", "APPEND": "追加数据", "TRUNCATE": "先清空再导入", "REPLACE": "替换表"}
+            steps.append(f"目标表已存在时: {action_map.get(added['TABLE_EXISTS_ACTION'], added['TABLE_EXISTS_ACTION'])}")
+
+        if "EXCLUDE" in added:
+            steps.append(f"排除指定对象: {added['EXCLUDE']}")
+        if "INCLUDE" in added:
+            steps.append(f"仅包含指定对象: {added['INCLUDE']}")
+
+        if "PARALLEL" in added:
+            steps.append(f"启用 {added['PARALLEL']} 个并行工作线程加速导入")
+        if "COMPRESSION" in added:
+            steps.append(f"启用 {added['COMPRESSION']} 解压缩")
+
+        if "SQLFILE" in added:
+            steps.append(f"将 DDL SQL 语句写入文件 {added['SQLFILE']}（不执行实际导入）")
+
+        if "NETWORK_LINK" in added:
+            steps.append(f"通过数据库链路 {added['NETWORK_LINK']} 直接导入远程数据")
+
+        if "ENCRYPTION_PASSWORD" in added:
+            steps.append("使用密码解密转储文件")
+
+        if "FLASHBACK_SCN" in added:
+            steps.append(f"基于 SCN {added['FLASHBACK_SCN']} 实现一致性导入")
+        elif "FLASHBACK_TIME" in added:
+            steps.append(f"基于时间点 {added['FLASHBACK_TIME']} 实现一致性导入")
+
+        if "VERSION" in added:
+            steps.append(f"导入兼容版本: {added['VERSION']}")
+
+        if "PARTITION_OPTIONS" in added:
+            steps.append(f"分区导入选项: {added['PARTITION_OPTIONS']}")
+
+        if "TRANSFORM" in added:
+            steps.append(f"应用转换规则: {added['TRANSFORM']}")
+
+        if "DISABLE_ARCHIVE_LOGGING" in added:
+            steps.append("禁用归档日志以提升导入性能")
+
+        if "METRICS" in added:
+            steps.append("记录导入性能指标")
+
+        if "REUSE_DATAFILES" in added:
+            steps.append("重用已有数据文件")
+
+        if self.connection.get("container_mode") == "CDB":
+            steps.append("以 CDB 模式导入，包含所有 PDB 的数据")
+
+        return steps

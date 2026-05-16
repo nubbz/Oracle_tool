@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.schemas.user import UserLogin, UserRegister, UserResponse, TokenResponse
 from app.services import auth_service
+from app.services.audit_service import log_action
 
 router = APIRouter()
 security = HTTPBearer()
@@ -21,11 +22,12 @@ def get_current_user(
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(body: UserLogin, db: Session = Depends(get_db)):
+def login(body: UserLogin, request: Request, db: Session = Depends(get_db)):
     user = auth_service.authenticate_user(db, body.username, body.password)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="用户名或密码错误")
 
+    log_action(db, user.id, "login", target=body.username, ip_address=request.client.host if request.client else "")
     token = auth_service.create_access_token(data={"sub": str(user.id)})
     return TokenResponse(
         access_token=token,
@@ -34,6 +36,7 @@ def login(body: UserLogin, db: Session = Depends(get_db)):
             username=user.username,
             display_name=user.display_name,
             is_active=user.is_active,
+            role=user.role or "operator",
         ),
     )
 
@@ -46,6 +49,7 @@ def register(body: UserRegister, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="用户名已存在")
 
     user = auth_service.register_user(db, body.username, body.password, body.display_name)
+    log_action(db, user.id, "register", target=body.username)
     token = auth_service.create_access_token(data={"sub": str(user.id)})
     return TokenResponse(
         access_token=token,
@@ -54,6 +58,7 @@ def register(body: UserRegister, db: Session = Depends(get_db)):
             username=user.username,
             display_name=user.display_name,
             is_active=user.is_active,
+            role=user.role or "operator",
         ),
     )
 
@@ -65,4 +70,5 @@ def get_me(user=Depends(get_current_user)):
         username=user.username,
         display_name=user.display_name,
         is_active=user.is_active,
+        role=user.role or "operator",
     )

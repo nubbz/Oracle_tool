@@ -142,3 +142,4 @@ class InstallRequest(BaseModel):
 class InstallResponse(BaseModel):
     command: str
     params_summary: list[str]
+    steps: list[str] = []

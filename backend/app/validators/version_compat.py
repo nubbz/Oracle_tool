@@ -69,6 +69,7 @@ DEPRECATED_PARAMS = {
     "exp": {
         "buffer": "23c",
         "recordlength": "23c",
+        "__tool__": "23c",  # exp entire tool deprecated in 23c
     },
     "imp": {
         "buffer": "23c",
@@ -76,6 +77,7 @@ DEPRECATED_PARAMS = {
         "streamsize": "23c",
         "compile": "23c",
         "destroy": "23c",
+        "__tool__": "23c",  # imp entire tool deprecated in 23c
     },
 }
 
@@ -85,6 +87,25 @@ class VersionCompat:
         warnings = []
 
         if oracle_version not in VERSION_ORDER:
+            return warnings
+
+        version_idx = VERSION_ORDER.index(oracle_version)
+
+        # Check if entire tool is deprecated (exp/imp removed in 23c)
+        dep_params = DEPRECATED_PARAMS.get(tool, {})
+        if "__tool__" in dep_params:
+            max_ver = dep_params["__tool__"]
+            if max_ver in VERSION_ORDER:
+                max_idx = VERSION_ORDER.index(max_ver)
+                if version_idx >= max_idx:
+                    warnings.append({
+                        "level": "error",
+                        "field": "tool",
+                        "message": f"{tool.upper()} 在 Oracle {max_ver} 中已完全废弃，请使用 {tool.replace('exp','expdp').replace('imp','impdp')}dp",
+                        "suggestion": f"Oracle {max_ver} 不再提供 {tool.upper()} 工具，请迁移到 Data Pump ({tool.replace('exp','expdp').replace('imp','impdp')}dp)",
+                    })
+
+        # 检查最低版本要求
             return warnings
 
         version_idx = VERSION_ORDER.index(oracle_version)

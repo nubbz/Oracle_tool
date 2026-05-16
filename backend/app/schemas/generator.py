@@ -166,3 +166,4 @@ class GenerateResponse(BaseModel):
     warnings: list[ValidationWarning]
     recommendations: list[str]
     directory_ddl: str = ""
+    steps: list[str] = []

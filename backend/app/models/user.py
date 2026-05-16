@@ -10,5 +10,6 @@ class User(Base):
     hashed_password = Column(String(255), nullable=False)
     display_name = Column(String(100), default="")
     is_active = Column(Boolean, default=True)
+    role = Column(String(20), default="operator")  # admin / operator / viewer
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

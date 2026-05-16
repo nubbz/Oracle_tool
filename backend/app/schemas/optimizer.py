@@ -56,3 +56,4 @@ class OptimizeRequest(BaseModel):
 class OptimizeResponse(BaseModel):
     command: str
     params_summary: list[str]
+    steps: list[str] = []
