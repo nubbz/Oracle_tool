@@ -1,85 +1,90 @@
 <template>
   <div class="generator-page">
     <div class="page-header">
-      <h2>命令生成器</h2>
-      <div class="header-actions">
-        <el-select v-model="store.tool" style="width: 160px" @change="store.resetParams">
-          <el-option v-for="t in TOOL_OPTIONS" :key="t.value" :label="t.label" :value="t.value" />
-        </el-select>
-        <el-select :model-value="settingsStore.oracleVersion" style="width: 140px" @change="(v: any) => settingsStore.setOracleVersion(v)">
-          <el-option v-for="v in ORACLE_VERSIONS" :key="v.value" :label="v.label" :value="v.value" />
-        </el-select>
-      </div>
+      <h2>数据泵命令生成器</h2>
+      <span class="page-desc">Oracle 数据泵 (expdp/impdp) 及传统导出导入 (exp/imp) 命令生成工具</span>
     </div>
 
-    <el-card shadow="never" class="params-card">
-      <!-- 工具选择 -->
+    <el-card shadow="never" class="section-card">
+      <template #header>
+        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%">
+          <span class="section-title">工具选择</span>
+          <div style="display: flex; gap: 10px; align-items: center">
+            <el-select v-model="store.tool" style="width: 160px" @change="store.resetParams">
+              <el-option v-for="t in TOOL_OPTIONS" :key="t.value" :label="t.label" :value="t.value" />
+            </el-select>
+            <el-select :model-value="settingsStore.oracleVersion" style="width: 140px" @change="(v: any) => settingsStore.setOracleVersion(v)">
+              <el-option v-for="v in ORACLE_VERSIONS" :key="v.value" :label="v.label" :value="v.value" />
+            </el-select>
+          </div>
+        </div>
+      </template>
       <ToolSelector v-model="store.tool" @update:model-value="store.resetParams" />
+    </el-card>
 
-      <el-divider />
-
-      <!-- 连接参数 -->
-      <h3 class="section-label">
-        数据库连接
-        <el-select
-          v-model="selectedEnv"
-          placeholder="快速选择环境"
-          clearable
-          size="small"
-          style="width: 200px"
-          @change="applyEnvironment"
-        >
-          <el-option v-for="env in environments" :key="env.id" :label="env.name" :value="env.id">
-            <span>{{ env.name }}</span>
-            <el-tag size="small" :type="envTypeTag(env.env_type)" style="margin-left: 8px">{{ env.env_type }}</el-tag>
-          </el-option>
-        </el-select>
-      </h3>
+    <el-card shadow="never" class="section-card">
+      <template #header>
+        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%">
+          <span class="section-title">数据库连接</span>
+          <el-select
+            v-model="selectedEnv"
+            placeholder="快速选择环境"
+            clearable
+            size="small"
+            style="width: 200px"
+            @change="applyEnvironment"
+          >
+            <el-option v-for="env in environments" :key="env.id" :label="env.name" :value="env.id">
+              <span>{{ env.name }}</span>
+              <el-tag size="small" :type="envTypeTag(env.env_type)" style="margin-left: 8px">{{ env.env_type }}</el-tag>
+            </el-option>
+          </el-select>
+        </div>
+      </template>
       <ConnectionForm v-model="store.connection" />
+    </el-card>
 
-      <el-divider />
-
-      <!-- 工具参数 -->
-      <h3 class="section-label">
-        {{ store.tool.toUpperCase() }} 参数
-        <el-button size="small" text @click="store.resetParams">
-          <el-icon><RefreshRight /></el-icon> 重置
-        </el-button>
-      </h3>
+    <el-card shadow="never" class="section-card">
+      <template #header>
+        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%">
+          <span class="section-title">{{ store.tool.toUpperCase() }} 参数</span>
+          <el-button size="small" text @click="store.resetParams">
+            <el-icon><RefreshRight /></el-icon> 重置
+          </el-button>
+        </div>
+      </template>
       <ExpdpParams v-if="store.tool === 'expdp'" />
       <ExpParams v-else-if="store.tool === 'exp'" />
       <ImpdpParams v-else-if="store.tool === 'impdp'" />
       <ImpParams v-else-if="store.tool === 'imp'" />
-
-      <el-divider />
-
-      <!-- 实时校验提示 -->
-      <el-alert
-        v-if="validation.errors.length > 0"
-        type="error"
-        :closable="false"
-        show-icon
-        style="margin-bottom: 16px"
-      >
-        <template #title>
-          参数校验发现 {{ validation.errors.filter(e => e.level === 'error').length }} 个错误，{{ validation.errors.filter(e => e.level === 'warning').length }} 个警告
-        </template>
-        <div v-for="(err, i) in validation.errors" :key="i" style="font-size: 12px; line-height: 1.6">
-          <span :style="{ color: err.level === 'error' ? '#F56C6C' : '#E6A23C' }">[{{ err.level === 'error' ? '错误' : '警告' }}]</span>
-          {{ err.message }}
-        </div>
-      </el-alert>
-
-      <!-- 生成按钮 -->
-      <div style="display: flex; gap: 10px">
-        <el-button type="primary" size="large" :loading="store.loading" style="flex: 1" @click="handleGenerate">
-          <el-icon><Cpu /></el-icon> 生成命令
-        </el-button>
-        <el-button v-if="store.tool === 'expdp' || store.tool === 'exp'" size="large" :loading="reverseLoading" style="flex: 1" @click="handleReverseGenerate">
-          <el-icon><Right /></el-icon> 反向生成导入命令
-        </el-button>
-      </div>
     </el-card>
+
+    <!-- 实时校验提示 -->
+    <el-alert
+      v-if="validation.errors.length > 0"
+      type="error"
+      :closable="false"
+      show-icon
+      style="margin-bottom: 16px"
+    >
+      <template #title>
+        参数校验发现 {{ validation.errors.filter(e => e.level === 'error').length }} 个错误，{{ validation.errors.filter(e => e.level === 'warning').length }} 个警告
+      </template>
+      <div v-for="(err, i) in validation.errors" :key="i" style="font-size: 12px; line-height: 1.6">
+        <span :style="{ color: err.level === 'error' ? '#F56C6C' : '#E6A23C' }">[{{ err.level === 'error' ? '错误' : '警告' }}]</span>
+        {{ err.message }}
+      </div>
+    </el-alert>
+
+    <!-- 操作按钮 -->
+    <div class="action-bar">
+      <el-button type="primary" size="large" :loading="store.loading" @click="handleGenerate">
+        <el-icon><Cpu /></el-icon> 生成命令
+      </el-button>
+      <el-button v-if="store.tool === 'expdp' || store.tool === 'exp'" size="large" :loading="reverseLoading" @click="handleReverseGenerate">
+        <el-icon><Right /></el-icon> 反向生成导入命令
+      </el-button>
+    </div>
 
     <!-- 右侧抽屉：结果面板 -->
     <el-drawer
@@ -225,18 +230,17 @@ async function handleReverseGenerate() {
 </script>
 
 <style scoped>
-.generator-page { max-width: 900px; margin: 0 auto; }
-.page-header {
-  display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 20px;
-}
-.page-header h2 { font-size: 18px; font-weight: 600; color: var(--text-primary); }
-.header-actions { display: flex; gap: 10px; align-items: center; }
+.generator-page { max-width: 1400px; margin: 0 auto; }
+.page-header { margin-bottom: 20px; }
+.page-header h2 { font-size: 18px; font-weight: 600; }
+.page-desc { font-size: 13px; color: var(--el-text-color-secondary); }
 
-.params-card :deep(.el-card__body) { padding: 24px 32px; }
+.section-card { margin-bottom: 16px; }
+.section-card :deep(.el-card__body) { padding: 20px 24px; }
+.section-title { font-size: 14px; font-weight: 600; }
 
-.section-label {
-  display: flex; justify-content: space-between; align-items: center;
-  font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 16px;
+.action-bar {
+  display: flex; gap: 12px; padding: 16px 0;
+  justify-content: center;
 }
 </style>

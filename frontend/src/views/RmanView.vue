@@ -1,5 +1,10 @@
 <template>
-  <div class="rman-view">
+  <div class="rman-page">
+    <div class="page-header">
+      <h2>RMAN 备份恢复工具</h2>
+      <span class="page-desc">Oracle Recovery Manager 备份与恢复脚本命令生成器</span>
+    </div>
+
     <el-tabs v-model="formTab" type="border-card">
       <el-tab-pane label="备份" name="backup">
         <el-form :model="backupForm" label-width="140px" :rules="backupRules" ref="backupFormRef">
@@ -351,6 +356,11 @@ function handleDownload(type: string) {
 </script>
 
 <style scoped>
+.rman-page { max-width: 1400px; margin: 0 auto; }
+.page-header { margin-bottom: 20px; }
+.page-header h2 { font-size: 18px; font-weight: 600; }
+.page-desc { font-size: 13px; color: var(--el-text-color-secondary); }
+
 .script-options {
   display: flex; justify-content: space-between; align-items: center;
   margin-bottom: 12px;
