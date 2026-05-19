@@ -139,7 +139,7 @@ onMounted(loadHistory)
 </script>
 
 <style scoped>
-.history-page { max-width: 1100px; margin: 0 auto; }
+.history-page { max-width: 1200px; margin: 0 auto; }
 .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
 .page-header h2 { font-size: 18px; font-weight: 600; }
 .header-actions { display: flex; gap: 10px; align-items: center; }

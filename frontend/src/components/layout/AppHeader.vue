@@ -1,7 +1,7 @@
 <template>
   <header class="app-header">
     <div class="header-left">
-      <span class="logo">Oracle Backup Tool</span>
+      <span class="logo">Oracle工具箱</span>
     </div>
     <div class="header-right">
       <el-tooltip :content="settingsStore.theme === 'dark' ? '切换浅色模式' : '切换深色模式'" placement="bottom">

@@ -19,6 +19,7 @@ const router = createRouter({
         { path: 'optimizer', name: 'Optimizer', component: () => import('@/views/OptimizerView.vue') },
         { path: 'installer', name: 'Installer', component: () => import('@/views/InstallerView.vue') },
         { path: 'rman', name: 'RMAN', component: () => import('@/views/RmanView.vue') },
+        { path: 'sqlldr', name: 'SQLLoader', component: () => import('@/views/SqlldrView.vue') },
         { path: 'templates', name: 'Templates', component: () => import('@/views/TemplatesView.vue') },
         { path: 'settings', name: 'Settings', component: () => import('@/views/SettingsView.vue') },
         { path: 'audit', name: 'AuditLog', component: () => import('@/views/AuditLogView.vue') },

@@ -29,6 +29,7 @@ const menuGroups = [
     items: [
       { path: '/', icon: 'Cpu', label: '数据泵' },
       { path: '/rman', icon: 'Files', label: 'RMAN 备份' },
+      { path: '/sqlldr', icon: 'UploadFilled', label: 'SQL*Loader' },
     ],
   },
   {

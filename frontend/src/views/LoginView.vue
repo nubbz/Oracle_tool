@@ -3,8 +3,7 @@
     <div class="login-card">
       <div class="login-header">
         <el-icon :size="36" color="var(--accent)"><Coin /></el-icon>
-        <h1>Oracle Backup Command Tool</h1>
-        <p class="subtitle">数据库逻辑备份与导入命令生成器</p>
+        <h1>Oracle工具箱</h1>
       </div>
 
       <el-tabs v-model="mode" class="login-tabs">
